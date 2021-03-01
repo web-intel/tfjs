@@ -198,7 +198,7 @@ const benchmarks = {
     type: 'GraphModel',
     inputSizes: [128, 256, 512, 1024],
     architectures: ['MobileNetV1', 'ResNet50'],
-    inputTypes: ['image', 'tensor'],
+    inputTypes: ['image', 'tensor', 'imageBitmap'],
     load: async (
         inputResolution = 128, modelArchitecture = 'MobileNetV1',
         inputType = 'image') => {
@@ -221,6 +221,10 @@ const benchmarks = {
       const model = await posenet.load(config);
       if (inputType === 'tensor') {
         model.input = tf.zeros([inputResolution, inputResolution, 3]);
+      } else if (inputType === 'imageBitmap') {
+        const image = await loadImage('tennis_standing.jpg');
+        model.input =
+            await createImageBitmap(image, {premultiplyAlpha: 'none'});
       } else {
         model.input = await loadImage('tennis_standing.jpg');
       }
@@ -237,7 +241,7 @@ const benchmarks = {
     // The ratio to the default camera size [480, 640].
     inputSizes: [0.25, 0.5, 0.75, 1.0],
     architectures: ['MobileNetV1', 'ResNet50'],
-    inputTypes: ['image', 'tensor'],
+    inputTypes: ['image', 'tensor', 'imageBitmap'],
     load: async (
         internalResolution, modelArchitecture = 'MobileNetV1',
         inputType = 'image') => {
@@ -260,6 +264,10 @@ const benchmarks = {
       if (inputType === 'tensor') {
         model.input =
             tf.zeros([480 * internalResolution, 640 * internalResolution, 3]);
+      } else if (inputType === 'imageBitmap') {
+        const image = await loadImage('tennis_standing.jpg');
+        model.input =
+            await createImageBitmap(image, {premultiplyAlpha: 'none'});
       } else {
         model.input = await loadImage('tennis_standing.jpg');
       }
