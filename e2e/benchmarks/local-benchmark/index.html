@@ -199,6 +199,7 @@ limitations under the License.
           const referencePrediction = predict(model, inferenceInput);
           referenceData = await getPredictionData(referencePrediction);
 
+          await tf.ready();
           await tf.setBackend(state.backend);
           await showMsg(`Runing on ${state.backend}`);
           const prediction = predict(model, inferenceInput);
@@ -857,6 +858,7 @@ limitations under the License.
         } else {
           showMsg(null);
         }
+        await tf.ready();
         await tf.setBackend(backend);
         await showFlagSettingsAndReturnTunableFlagControllers(envFolder, state.backend);
       });
