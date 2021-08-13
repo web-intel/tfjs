@@ -86,11 +86,6 @@ limitations under the License.
       <tbody></tbody>
     </table>
   </div>
-  <script src="../../../tfjs-backend-webgpu/dist/tf-webgpu.js"></script>
-  <script src="../model_config.js"></script>
-  <script src="../benchmark_util.js"></script>
-  <script src="./util.js"></script>
-  <script src="./index.js"></script>
   <script>
     'use strict';
 
@@ -681,7 +676,11 @@ limitations under the License.
       for (let i = 0; i < urls.length; i++) {
         let name = urls[i].split('/')[0].replace('tfjs-', '').replace('backend-', '');
         if (localBuild.includes(name)) {
-          urls[i] = `../../../dist/bin/${urls[i]}`;
+          if (['webgpu', 'webgl'].includes(name)) {
+            urls[i] = `../../../${urls[i]}`;
+          } else {
+            urls[i] = `../../../dist/bin/${urls[i]}`;
+          }
         } else {
           urls[i] = `https://unpkg.com/@tensorflow/${urls[i].replace('/', '@latest/')}`;
         }
