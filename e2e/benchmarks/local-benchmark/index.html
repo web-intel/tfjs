@@ -200,7 +200,7 @@ limitations under the License.
           referenceData = await getPredictionData(referencePrediction);
 
           // webgl correctness test use webgpu as baseline
-          if (state.backend === "webgl") {
+          if (state.benchmark === "pose-detection" && state.backend === "webgl") {
             await tf.setBackend("webgpu");
           } else {
             await tf.setBackend(state.backend);
