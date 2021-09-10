@@ -53,7 +53,7 @@
     "build": "bazel build :tfjs-backend-webgl_pkg",
     "bundle": "bazel build :tfjs-backend-webgl_pkg",
     "bundle-ci": "yarn bundle",
-    "build-link-package": "cd ../link-package && yarn build",
+    "build-link-package": "cd ../link-package-core && yarn build",
     "build-deps": "yarn build-link-package",
     "build-deps-ci": "yarn build-deps",
     "build-npm": "bazel build :tfjs-backend-webgl_pkg",
