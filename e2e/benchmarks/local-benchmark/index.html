@@ -687,7 +687,7 @@ limitations under the License.
         let name = urls[i].split('/')[0].replace('tfjs-', '').replace('backend-', '');
         if (localBuild.includes(name)) {
           if (['webgpu', 'webgl'].includes(name)) {
-            urls[i] = `../../../${urls[i]}`;
+            urls[i] = `../../../${urls[i]}`.replace('.min', '');
           } else {
             urls[i] = `../../../dist/bin/${urls[i]}`;
           }
