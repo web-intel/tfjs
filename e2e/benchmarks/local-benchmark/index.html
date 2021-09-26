@@ -179,14 +179,19 @@ limitations under the License.
 
         // load model and run inference
         try {
-          tf.setBackend('cpu');
+          if (state.benchmark === "pose-detection") {
+            tf.setBackend('webgl');
+            await showMsg('Runing on webgl');
+          } else {
+            tf.setBackend('cpu');
+            await showMsg('Runing on cpu');
+          }
           await loadModelAndRecordTime();
           await showMsg('Testing correctness');
           await showInputs();
           await showCorrectnessTestParameters();
 
           let inferenceInput;
-          await showMsg('Runing on cpu');
           if (state.benchmark === 'custom') {
             inferenceInput = generateInputFromDef(
               state.inputs, model instanceof tf.GraphModel);
@@ -194,7 +199,12 @@ limitations under the License.
           const referencePrediction = predict(model, inferenceInput);
           referenceData = await getPredictionData(referencePrediction);
 
-          await tf.setBackend(state.backend);
+          // webgl correctness test use webgpu as baseline
+          if (state.benchmark === "pose-detection" && state.backend === "webgl") {
+            await tf.setBackend("webgpu");
+          } else {
+            await tf.setBackend(state.backend);
+          }
           await showMsg(`Runing on ${state.backend}`);
           const prediction = predict(model, inferenceInput);
           predictionData = await getPredictionData(prediction);
