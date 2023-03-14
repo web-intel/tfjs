@@ -129,6 +129,11 @@ export class WebGPUBackend extends KernelBackend {
   private hasReadSyncWarned = false;
   private hasTimestampQueryWarned = false;
 
+  // For commands record
+  private inputTensorsForReplay: {tensorId: DataId, resource: GPUBuffer}[] = [];
+  private recordList: webgpu_program.WebGPUProgram[] = [];
+  private record = false;
+
   private nextDataId(): number {
     return WebGPUBackend.nextDataId++;
   }
@@ -286,25 +291,38 @@ export class WebGPUBackend extends KernelBackend {
     this.tensorMap.set(dataId, {dtype, shape, values, refCount});
   }
 
-  submitQueue() {
-    this.queue.submit([this.commandEncoder.finish()]);
-    this.commandEncoder = null;
-    this.dispatchCountInPass = 0;
-
+  private releasePendingDisposalTensors() {
     this.commandQueueOwnedIds = new WeakSet<DataId>();
-
     this.tensorDataPendingDisposal.forEach(d => {
       this.releaseResource(d);
       this.tensorMap.delete(d);
     });
+    this.tensorDataPendingDisposal = [];
+  }
 
+  private releasePendingDisposalUniforms() {
     this.uniformPendingDisposal.forEach(
         b => this.bufferManager.releaseBuffer(b));
+    this.uniformPendingDisposal = [];
+  }
+
+  submitQueue() {
+    this.endComputePassEncoder();
+    this.queue.submit([this.commandEncoder.finish()]);
+    this.commandEncoder = null;
+    this.dispatchCountInPass = 0;
+
+    if (!this.record) {
+      // Don't release intermediate tensors in record mode.
+      this.releasePendingDisposalTensors();
+
+      // Don't dispose uniform buffer in record/replay mode.
+      this.releasePendingDisposalUniforms();
+    }
+
     this.stagingPendingDisposal.forEach(
         b => this.bufferManager.releaseBuffer(b, false));
 
-    this.tensorDataPendingDisposal = [];
-    this.uniformPendingDisposal = [];
     this.stagingPendingDisposal = [];
   }
 
@@ -533,7 +551,9 @@ export class WebGPUBackend extends KernelBackend {
       const data = await this.getBufferData(tensorData.resource as GPUBuffer);
       vals = util.convertBackendValuesAndArrayBuffer(data, tensorData.dtype);
     }
-    this.convertAndCacheOnCPU(dataId, vals);
+    // comment out below code in case benchmarks directly use cached data on
+    // cpu.
+    // this.convertAndCacheOnCPU(dataId, vals);
     return vals;
   }
 
@@ -730,7 +750,68 @@ export class WebGPUBackend extends KernelBackend {
     return resource;
   }
 
-  uploadToGPU(dataId: DataId): void {
+  public override disposeRecordList(): void {
+    this.releasePendingDisposalTensors();
+    this.releasePendingDisposalUniforms();
+
+    this.recordList = [];
+    this.record = false;
+  }
+
+  public override isRecordSupported(): boolean {
+    return true;
+  }
+
+  public override replay(): void {
+    const length = this.recordList.length;
+    for (let i = 0; i < length; i++) {
+      this.ensureCommandEncoderReady();
+      if (!this.computePassEncoder) {
+        this.computePassEncoder = this.commandEncoder.beginComputePass();
+      }
+      const program = this.recordList[i];
+      this.computePassEncoder.setPipeline(
+          program.pipeline as GPUComputePipeline);
+      this.computePassEncoder.setBindGroup(0, program.bindGroup);
+      this.computePassEncoder.dispatchWorkgroups(
+          program.dispatch[0], program.dispatch[1], program.dispatch[2]);
+      this.dispatchCountInPass++;
+      if (env().get('WEBGPU_DEFERRED_SUBMIT_BATCH_SIZE') as
+          number <= this.dispatchCountInPass) {
+        this.submitQueue();
+      }
+    }
+  }
+
+  public override bindInputToPlaceHolder(inId: DataId, placeholderId: DataId):
+      void {
+    const tensorData = this.tensorMap.get(inId);
+    this.inputTensorsForReplay.forEach(input => {
+      if (input.tensorId === placeholderId) {
+        if (tensorData.resource) {
+          // copy inId's resource to placeholderId's resource.
+          const resource = tensorData.resource as GPUBuffer;
+          this.ensureCommandEncoderReady();
+          this.endComputePassEncoder();
+          this.commandEncoder.copyBufferToBuffer(
+              resource, 0, input.resource, 0, resource.size);
+        } else {
+          this.uploadToGPU(inId, input.resource);
+        }
+      }
+    });
+  }
+
+  public override traceInputTensor(tensorId: DataId): void {
+    const tensorData = this.tensorMap.get(tensorId);
+    if (!tensorData.resource) {
+      console.warn(`There is no buffer to bind to tensor ${tensorId}`);
+    }
+    this.inputTensorsForReplay.push(
+        {tensorId, resource: tensorData.resource as GPUBuffer});
+  }
+
+  uploadToGPU(dataId: DataId, resource: GPUBuffer = null): void {
     const tensorData = this.tensorMap.get(dataId);
     // Already on the GPU.
     if (tensorData.resource != null) {
@@ -773,6 +854,8 @@ export class WebGPUBackend extends KernelBackend {
 
       // Once uploaded, don't store the values on cpu.
       tensorData.values = null;
+    } else if (resource) {
+      buffer = resource;
     } else {
       buffer = this.bufferManager.acquireBuffer(size, usage);
     }
@@ -945,10 +1028,15 @@ export class WebGPUBackend extends KernelBackend {
     });
     this.commandQueueOwnedIds.add(output.dataId);
 
-    const bindGroup = this.device.createBindGroup({
+    program.bindGroup = this.device.createBindGroup({
       layout: program.pipeline.getBindGroupLayout(0),
       entries: bindings.map((b, i) => ({binding: i, resource: b})),
     });
+
+    if (env().getBool('RECORD')) {
+      this.recordList.push(program);
+      this.record = true;
+    }
 
     const shouldTimeProgram = this.activeTimers != null;
     this.ensureCommandEncoderReady();
@@ -975,7 +1063,7 @@ export class WebGPUBackend extends KernelBackend {
     }
 
     this.computePassEncoder.setPipeline(program.pipeline);
-    this.computePassEncoder.setBindGroup(0, bindGroup);
+    this.computePassEncoder.setBindGroup(0, program.bindGroup);
     this.computePassEncoder.dispatchWorkgroups(
         program.dispatch[0], program.dispatch[1], program.dispatch[2]);
     this.dispatchCountInPass++;

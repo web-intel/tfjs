@@ -54,7 +54,9 @@ export interface WebGPUProgram {
   // Each thread writes to workPerThread * workPerThread locations in the output
   // buffer.
   workPerThread?: number;
+
   pipeline?: GPUComputePipeline|Promise<GPUComputePipeline>;
+  bindGroup?: GPUBindGroup;
   getUserCode: () => string;
 }
 
