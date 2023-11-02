@@ -23,7 +23,7 @@ import {computeDispatch, computeWorkgroupInfoForMatMul} from './webgpu_util';
 
 export function matMulReadFnSource(
     transposeA: boolean, transposeB: boolean, fitAOuter = false,
-    fitBOuter = false, fitInner = false, component = 1) {
+    fitBOuter = false, fitInner = false, component = 1, aComponents = 1) {
   util.assert(
       transposeA && component === 1 || !transposeA,
       () => `transposeA ${transposeA} is not compatible with component size ${
@@ -38,8 +38,8 @@ export function matMulReadFnSource(
                                `value = getB(batch, row, col);`;
 
   return `
-  fn mm_readA(batch: i32, row: i32, col: i32) -> ${typeSnippet(component)} {
-    var value = ${typeSnippet(component)}(0.0);
+  fn mm_readA(batch: i32, row: i32, col: i32) -> ${typeSnippet(aComponents)} {
+    var value = ${typeSnippet(aComponents)}(0.0);
     ${
       fitAOuter && fitInner ?
           sampleA :
@@ -66,11 +66,12 @@ export function matMulReadFnSource(
 export function matMulReadWriteFnSource(
     hasBias: boolean, activation: backend_util.Activation, transposeA: boolean,
     transposeB: boolean, fitAOuter = false, fitBOuter = false, fitInner = false,
-    component = 1) {
+    component = 1, aComponents = 1) {
   return `
   ${
       matMulReadFnSource(
-          transposeA, transposeB, fitAOuter, fitBOuter, fitInner, component)}
+          transposeA, transposeB, fitAOuter, fitBOuter, fitInner, component,
+          aComponents)}
   fn mm_write(batch: i32, row: i32, col: i32, valueIn: ${
       typeSnippet(component)}) {
     ${
@@ -582,7 +583,7 @@ export class MatMulPackedProgram implements WebGPUProgram {
             this.addBias, this.activation,
             false /* transposeA is implemented in makeMatMulPackedSource */,
             this.transposeB, this.fitAOuter, this.fitBOuter, this.fitInner,
-            this.isVec4 ? 4 : 1)}
+            this.isVec4 ? 4 : 1, this.isVec4 ? 4 : 1)}
       ${
         this.isVec4 ?
             makeMatMulPackedVec4Source(

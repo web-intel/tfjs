@@ -18,6 +18,7 @@
 import {backend_util, broadcast_util, env, TensorInfo, util} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
+import {MatMulLWSProgram} from '../matmul_lws_webgpu';
 import {MatMulPackedProgram} from '../matmul_packed_webgpu';
 import {MatMulReduceProgram} from '../matmul_reduce_webgpu';
 import {MatMulSmallOutputSizeProgram} from '../matmul_small_output_size_webgpu';
@@ -132,6 +133,8 @@ export function batchMatMulImpl({
       } else {
         matmulProgramType = MatMulProgramType.MatMulSmallOutputSizeProgram;
       }
+    } else if (!transposeA && !transposeB) {
+      matmulProgramType = MatMulProgramType.MatMulLWSProgram;
     } else {
       matmulProgramType = MatMulProgramType.MatMulPackedProgram;
     }
@@ -184,6 +187,11 @@ export function batchMatMulImpl({
       program = new MatMulSmallOutputSizeProgram(
           a3dShape, b3dShape, outputShape, transposeA, transposeB, bias,
           activation, preluActivationWeights);
+      break;
+    case MatMulProgramType.MatMulLWSProgram:
+      program = new MatMulLWSProgram(
+          outputShape, innerShapeA, transposeA, transposeB, bias, activation,
+          preluActivationWeights);
       break;
     case MatMulProgramType.MatMulPackedProgram:
       // Experiments show that sequential access is more friendly for Intel
