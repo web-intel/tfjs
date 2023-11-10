@@ -18,6 +18,7 @@
 import {backend_util, env, TensorInfo} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
+import {Conv2DMMLWSProgram} from '../conv2d_mm_lws_webgpu';
 import {Conv2DMMProgram} from '../conv2d_mm_webgpu';
 import {Conv2DNaiveProgram} from '../conv2d_naive_webgpu';
 import {Im2ColProgram} from '../im2col_webgpu';
@@ -354,11 +355,18 @@ export function conv2DImpl({
         {type: 'int32', data: [dimAOuter]}, {type: 'int32', data: [dimBOuter]},
         {type: 'int32', data: [dimInner]});
 
-    // Experiments show that sequential access is more friendly for Intel GPUs.
-    const sequentialAccessByThreads = backend.adapterInfo.isIntel();
-    program = new Conv2DMMProgram(
-        convInfo, dimAOuter, dimBOuter, dimInner, hasBias, activation,
-        hasPreluActivationWeights, sequentialAccessByThreads);
+    if (isChannelsLast) {
+      program = new Conv2DMMLWSProgram(
+          convInfo, dimAOuter, dimBOuter, dimInner, hasBias, activation,
+          hasPreluActivationWeights);
+    } else {
+      // Experiments show that sequential access is more friendly for Intel
+      // GPUs.
+      const sequentialAccessByThreads = backend.adapterInfo.isIntel();
+      program = new Conv2DMMProgram(
+          convInfo, dimAOuter, dimBOuter, dimInner, hasBias, activation,
+          hasPreluActivationWeights, sequentialAccessByThreads);
+    }
   }
 
   const intermediates: TensorInfo[] = [];

@@ -23,7 +23,8 @@ import {getMainHeaderString as main, typeSnippet, WebGPUProgram} from './webgpu_
 
 export function makeMatMulLWSSource(
     workgroupSize: number, outputNumber: number, components: number,
-    aComponents: number, tileM: number, tileN: number, tileK: number): string {
+    aComponents: number, tileM: number, tileN: number, tileK: number,
+    isConv = false): string {
   const aValueType = typeSnippet(aComponents);
   const bValueType = typeSnippet(components);
   const outValueType = typeSnippet(components);
@@ -61,8 +62,8 @@ export function makeMatMulLWSSource(
     let stride1 = (u32(uniforms.dimAOuter) - 1u) / ${tileM}u + 1u;
     let tileRowStart = (index1 % stride1) * ${tileM}u;
     let batch = index1 / stride1;
-    let batchA = i32(batch) % uniforms.aShape[0];
-    let batchB = i32(batch) % uniforms.bShape[0];
+    let batchA = ${isConv ? 'i32(batch)' : 'i32(batch) % uniforms.aShape[0]'};
+    let batchB = ${isConv ? '0i' : 'i32(batch) % uniforms.bShape[0]'};
 
     var values: array<${outValueType}, ${outputNumber}>;
     let numTiles = (u32(uniforms.dimInner) - 1u) / ${tileK} + 1u;
@@ -146,6 +147,9 @@ export class MatMulLWSProgram implements WebGPUProgram {
   components: number;
   aComponents: number;
   outputNumber: number;
+  fitAOuter: boolean;
+  fitBOuter: boolean;
+  fitInner: boolean;
   tileN: number;
   tileM: number;
   tileK: number;
@@ -165,7 +169,7 @@ export class MatMulLWSProgram implements WebGPUProgram {
     this.aComponents = getMaxComponents(K);
     this.tileN = N < 32 ? N : 32;
     this.tileM = M < 32 ? M : 32;
-    this.tileK = K < 16 ? K : (K > 1000 ? 32 : 16);
+    this.tileK = K < 32 ? K : (K > 1000 ? 32 : 16);
     // The output number of each thread.
     this.outputNumber =
         this.tileM < 4 ? this.tileM : getMaxComponents(this.tileM);
@@ -203,9 +207,13 @@ export class MatMulLWSProgram implements WebGPUProgram {
     this.addBias = addBias;
     this.activation = activation;
     this.hasPreluActivationWeights = hasPreluActivationWeights;
+    this.fitAOuter = M % this.tileM === 0;
+    this.fitBOuter = N % this.tileN === 0;
+    this.fitInner = K % this.tileK === 0;
     this.shaderKey = `matMulLWS_${this.activation}_${transposeA}_${
-        transposeB}_${this.tileK}_${this.tileM}_${this.tileN}_${
-        this.components}_${this.aComponents}_${this.outputNumber}`;
+        transposeB}_${this.fitAOuter}_${this.fitBOuter}_${this.fitInner}_${
+        this.tileK}_${this.tileM}_${this.tileN}_${this.components}_${
+        this.aComponents}_${this.outputNumber}`;
   }
 
   getUserCode(): string {
@@ -217,7 +225,8 @@ export class MatMulLWSProgram implements WebGPUProgram {
       ${
         matMulReadWriteFnSource(
             this.addBias, this.activation, this.transposeA, this.transposeB,
-            false, false, false, this.components, this.aComponents)}
+            this.fitAOuter, this.fitBOuter, this.fitInner, this.components,
+            this.aComponents)}
       ${
         makeMatMulLWSSource(
             this.workgroupSize[0], this.outputNumber, this.components,

@@ -22,7 +22,7 @@ import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packe
 import {typeSnippet, WebGPUProgram} from './webgpu_program';
 import {computeDispatch, computeWorkgroupSizeForConv2d, computeWorkPerThreadForConv2d} from './webgpu_util';
 
-function conv2dCommonSnippet(
+export function conv2dCommonSnippet(
     isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean,
     fitInner: boolean, addBias = false,
     activation: backend_util.Activation = null,
@@ -32,6 +32,8 @@ function conv2dCommonSnippet(
     switch (innerElementSize) {
       case 1:
         return 'resData = f32(x[xIndex]);';
+      case 2:
+        return 'resData = vec2<f32>(x[xIndex / 2]);';
       case 3:
         return 'resData = vec3<f32>(x[xIndex], x[xIndex + 1], x[xIndex + 2]);';
       case 4:
